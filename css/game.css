@@ -1,6 +1,8 @@
 #gameContainer {
   position: relative;
   text-align: center;
+  max-width: 100%;
+  min-width: 0;
 }
 canvas {
   background: #000;
@@ -10,4 +12,5 @@ canvas {
   box-shadow: 0 0 20px rgba(33,33,222,0.5);
   max-width: 100%;
   height: auto;
+  touch-action: none;
 }

@@ -15,20 +15,34 @@ function canMove(x, y, dir, isGhost = false) {
 
 function updatePlayer() {
   if (!player.alive) return;
-  // try turn
-  if (canMove(player.x, player.y, player.nextDir)) player.dir = player.nextDir;
-  if (canMove(player.x, player.y, player.dir)) {
-    player.x += DIRS[player.dir][0] * player.speed;
-    player.y += DIRS[player.dir][1] * player.speed;
-  }
-  // tunnel wrap
-  if (player.x < -TILE/2) player.x = COLS * TILE - TILE/2;
-  if (player.x > COLS * TILE - TILE/2) player.x = -TILE/2;
-  // snap to center of tile for cleaner turns
-  const cx = Math.floor(player.x / TILE) * TILE + TILE/2;
-  const cy = Math.floor(player.y / TILE) * TILE + TILE/2;
-  if (Math.abs(player.x - cx) < player.speed && Math.abs(player.y - cy) < player.speed) {
-    player.x = cx; player.y = cy;
+  // Move up to each tile center before turning. Snapping after every small
+  // step can round the player back to the same center forever.
+  const epsilon = 1e-6;
+  let remaining = player.speed;
+  while (remaining > epsilon) {
+    const cx = Math.floor(player.x / TILE) * TILE + TILE/2;
+    const cy = Math.floor(player.y / TILE) * TILE + TILE/2;
+    const centered = Math.abs(player.x - cx) < epsilon && Math.abs(player.y - cy) < epsilon;
+    if (centered) {
+      player.x = cx; player.y = cy;
+      if (canMove(cx, cy, player.nextDir)) player.dir = player.nextDir;
+      if (!canMove(cx, cy, player.dir)) break;
+    } else if (player.nextDir === (player.dir + 2) % 4) {
+      player.dir = player.nextDir; // Reversing within a corridor is always safe.
+    }
+
+    const axis = player.dir % 2 === 0 ? 'x' : 'y';
+    const sign = DIRS[player.dir][axis === 'x' ? 0 : 1];
+    let target = Math.floor(player[axis] / TILE) * TILE + TILE/2;
+    if ((target - player[axis]) * sign < epsilon) target += sign * TILE;
+    const distance = Math.abs(target - player[axis]);
+    const step = Math.min(remaining, distance);
+    player[axis] = step === distance ? target : player[axis] + sign * step;
+    remaining -= step;
+
+    // Preserve progress through the tunnel rather than snapping it away.
+    if (player.x < -TILE/2) player.x += COLS * TILE;
+    if (player.x > COLS * TILE - TILE/2) player.x -= COLS * TILE;
   }
   // mouth
   player.mouth += player.mouthDir * 0.3;

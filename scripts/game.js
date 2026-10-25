@@ -3,11 +3,14 @@ function init() {
   ctx = canvas.getContext('2d');
   canvas.width = COLS * TILE;
   canvas.height = ROWS * TILE;
-  highScore = parseInt(localStorage.getItem('pacmanHigh') || '0');
+  try {
+    highScore = Math.max(0, parseInt(localStorage.getItem('pacmanHigh'), 10) || 0);
+  } catch {
+    highScore = 0; // Storage can be blocked in private or embedded browsers.
+  }
   document.getElementById('highScore').textContent = 'HIGH: ' + highScore;
   document.getElementById('startBtn').addEventListener('click', startGame);
-  document.addEventListener('keydown', onKeyDown);
-  document.addEventListener('keyup', onKeyUp);
+  initInput();
   loadMaze();
   resetLevel(true);
   requestAnimationFrame(loop);
@@ -20,7 +23,7 @@ function resetLevel(isNewGame = false) {
     for (let c = 0; c < COLS; c++)
       if (maze[r][c] === 2 || maze[r][c] === 3) dotsLeft++;
   player = {
-    x: 13.5 * TILE, y: 23 * TILE,
+    x: 13.5 * TILE, y: 22.5 * TILE,
     dir: 0, nextDir: 0, // 0=right,1=down,2=left,3=up
     speed: 1.6, mouth: 0, mouthDir: 1, alive: true
   };
@@ -42,6 +45,7 @@ function resetLevel(isNewGame = false) {
 
 function startGame() {
   initAudio();
+  animFrame = 0;
   gameState = 'playing';
   document.getElementById('overlay').style.display = 'none';
   resetLevel(true);

@@ -1,6 +1,16 @@
 <!--
 Logic and styles have been separated from index.html and moved into their own files.
 I noticed a bug: on mobile devices, you cannot move the game character.
+Addendum: It wasn't just the movements on mobile devices that wouldn't have worked because there was no touch control; Pacman also started inside a wall, the centering logic reset his movements, and memory errors could leave the playing field black.
+
+Give it a try: it works now.
+
+A little piece of advice for the future: have Grok offload the JavaScript and CSS into separate files, and get it to write Node and smoke tests for you.
+
+Best regards from a contributor.
+Mcpasi 
+https://github.com/Mcpasi
+
 -->
 
 <!DOCTYPE html>
@@ -32,7 +42,7 @@ I noticed a bug: on mobile devices, you cannot move the game character.
   <div id="lives"></div>
   <div id="overlay">
     <h1>GROK-PACMAN</h1>
-    <p>Arrow keys or WASD to move</p>
+    <p>Arrow keys, WASD or swipe to move</p>
     <p>P or Esc to pause</p>
     <button id="startBtn">START GAME</button>
   </div>

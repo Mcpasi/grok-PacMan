@@ -18,7 +18,11 @@ function updateUI() {
   document.getElementById('score').textContent = 'SCORE: ' + score;
   if (score > highScore) {
     highScore = score;
-    localStorage.setItem('pacmanHigh', highScore);
+    try {
+      localStorage.setItem('pacmanHigh', highScore);
+    } catch {
+      // Keep the in-memory score even when persistence is unavailable.
+    }
     document.getElementById('highScore').textContent = 'HIGH: ' + highScore;
   }
   const livesEl = document.getElementById('lives');
