@@ -3,6 +3,7 @@ function init() {
   ctx = canvas.getContext('2d');
   canvas.width = COLS * TILE;
   canvas.height = ROWS * TILE;
+  GameRenderer.init(canvas);
   try {
     highScore = Math.max(0, parseInt(localStorage.getItem('pacmanHigh'), 10) || 0);
   } catch {
@@ -18,6 +19,7 @@ function init() {
 
 function resetLevel(isNewGame = false) {
   loadMaze();
+  GameRenderer.setMaze(maze);
   dotsLeft = 0;
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)

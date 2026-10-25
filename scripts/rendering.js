@@ -1,78 +1,95 @@
-// ==================== DRAWING ====================
-function drawMaze() {
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const cell = maze[r][c];
-      const x = c * TILE, y = r * TILE;
-      if (cell === 0) {
-        ctx.fillStyle = '#2121de';
-        ctx.fillRect(x, y, TILE, TILE);
-        // inner highlight
-        ctx.fillStyle = '#0000aa';
-        ctx.fillRect(x+1, y+1, TILE-2, TILE-2);
-      } else if (cell === 2) {
-        ctx.fillStyle = '#ffb897';
+const GameRenderer = (() => {
+  let fallback, environment, layout, surface;
+  let actors = { ...ClassicActors };
+  let time = 0, previousTime = null, generation = 0;
+  let reducedMotion = false;
+
+  function setEnvironment(next) {
+    if (!next || typeof next.draw !== 'function' || typeof next.setLayout !== 'function') {
+      throw new TypeError('An environment needs draw() and setLayout().');
+    }
+    if (layout) next.setLayout(layout);
+    const previous = environment;
+    environment = next;
+    generation++;
+    surface.dataset.renderer = next.name || 'custom';
+    if (previous && previous !== fallback && previous !== next) previous.dispose?.();
+  }
+
+  function useFallback() {
+    if (environment !== fallback) setEnvironment(fallback);
+  }
+
+  function init(canvas) {
+    surface = canvas;
+    reducedMotion = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    fallback = CanvasCity.create({ createCanvas: () => document.createElement('canvas') });
+    setEnvironment(fallback);
+    // No CDN request is required to start playing. Failed imports stay on Canvas.
+    if (!window.WebGLRenderingContext && !window.WebGL2RenderingContext) return;
+    const request = generation;
+    Promise.all([
+      import('./rendering/city-three.mjs'),
+      import('https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js')
+    ]).then(([{ createCityScene }, three]) => {
+      if (generation !== request) return;
+      const scene = createCityScene({ three, canvas, paintGround: CanvasCity.paintGround, onFailure: useFallback });
+      try { setEnvironment(scene); } catch (error) { scene.dispose(); throw error; }
+    }).catch(() => { /* Offline, CSP, and unsupported GPUs use the complete Canvas city. */ });
+  }
+
+  function setMaze(maze) {
+    layout = CityLayout.create(maze, TILE);
+    fallback.setLayout(layout);
+    if (environment !== fallback) {
+      try { environment.setLayout(layout); } catch { useFallback(); }
+    }
+  }
+
+  function setActors(next) {
+    for (const key of ['player', 'ghosts']) {
+      if (key in next && typeof next[key] !== 'function') throw new TypeError(`${key} must be a renderer function.`);
+    }
+    actors = { ...actors, ...next };
+  }
+
+  function drawCollectibles(ctx, frame, maze) {
+    for (const { row, col } of layout.collectibles) {
+      const cell = maze[row][col];
+      const x = (col + 0.5) * TILE, y = (row + 0.5) * TILE;
+      if (cell === 4) {
+        ctx.fillStyle = '#d09087';
+        ctx.fillRect(col * TILE, row * TILE + TILE * 0.4, TILE, 2);
+      } else if (cell === 2 || cell === 3) {
+        ctx.fillStyle = cell === 3 ? '#ffe9b2' : '#d4c8a2';
         ctx.beginPath();
-        ctx.arc(x + TILE/2, y + TILE/2, 2, 0, Math.PI*2);
+        const pulse = frame.reducedMotion ? 0 : Math.sin(frame.time * 2) * 0.6;
+        ctx.arc(x, y, cell === 3 ? 4.5 + pulse : 1.8, 0, Math.PI * 2);
         ctx.fill();
-      } else if (cell === 3) {
-        ctx.fillStyle = '#ffb897';
-        ctx.beginPath();
-        ctx.arc(x + TILE/2, y + TILE/2, 6, 0, Math.PI*2);
-        ctx.fill();
+        if (cell === 3) {
+          ctx.strokeStyle = 'rgba(255, 222, 156, 0.25)';
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(x, y, 7 + pulse, 0, Math.PI * 2); ctx.stroke();
+        }
       }
     }
   }
-  // ghost house door
-  ctx.fillStyle = '#ffb8ff';
-  ctx.fillRect(13*TILE, 12*TILE - 2, 2*TILE, 4);
-}
 
-function drawPlayer() {
-  if (!player.alive) return;
-  const mouth = 0.2 + player.mouth * 0.6;
-  ctx.save();
-  ctx.translate(player.x, player.y);
-  ctx.rotate(player.dir * Math.PI / 2);
-  ctx.fillStyle = '#ffff00';
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.arc(0, 0, TILE*0.45, mouth, Math.PI*2 - mouth);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
+  function render(timestamp, state) {
+    const delta = previousTime === null ? 0 : Math.max(0, Math.min(100, timestamp - previousTime));
+    previousTime = timestamp;
+    if (state.gameState !== 'paused') time += delta / 1000;
+    const frame = { time, reducedMotion };
+    const ctx = surface.getContext('2d');
+    ctx.clearRect(0, 0, surface.width, surface.height);
+    try { environment.draw(ctx, frame); } catch { useFallback(); fallback.draw(ctx, frame); }
+    drawCollectibles(ctx, frame, state.maze);
+    const options = { tile: TILE, colors: GHOST_COLORS, dirs: DIRS,
+      powerTimer: state.powerTimer, animFrame: reducedMotion ? 0 : state.animFrame };
+    actors.player(ctx, state.player, options);
+    actors.ghosts(ctx, state.ghosts, options);
+    fallback.drawAtmosphere(ctx, frame);
+  }
 
-function drawGhosts() {
-  ghosts.forEach(g => {
-    if (g.mode === 'house' && g.houseTimer > 30) return; // hide a bit
-    const x = g.x, y = g.y;
-    let color = GHOST_COLORS[g.color];
-    if (g.mode === 'eyes') color = '#fff';
-    else if (g.scared) color = (powerTimer < 120 && Math.floor(animFrame/8)%2) ? '#fff' : '#2121de';
-    ctx.fillStyle = color;
-    // body
-    ctx.beginPath();
-    ctx.arc(x, y - 2, TILE*0.4, Math.PI, 0);
-    ctx.lineTo(x + TILE*0.4, y + TILE*0.3);
-    for (let i = 0; i < 3; i++) {
-      ctx.quadraticCurveTo(x + TILE*0.4 - i*TILE*0.25, y + TILE*0.5, x + TILE*0.4 - (i+0.5)*TILE*0.25, y + TILE*0.3);
-    }
-    ctx.lineTo(x - TILE*0.4, y - 2);
-    ctx.fill();
-    // eyes
-    if (g.mode !== 'eyes') {
-      const eyeOff = DIRS[g.dir][0]*2;
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(x-4, y-4, 4, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x+4, y-4, 4, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#0000ff';
-      ctx.beginPath(); ctx.arc(x-4 + eyeOff, y-4, 2, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x+4 + eyeOff, y-4, 2, 0, Math.PI*2); ctx.fill();
-    } else {
-      ctx.fillStyle = '#00f';
-      ctx.beginPath(); ctx.arc(x-4, y-2, 3, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x+4, y-2, 3, 0, Math.PI*2); ctx.fill();
-    }
-  });
-}
+  return { init, setMaze, setActors, setEnvironment, render };
+})();
