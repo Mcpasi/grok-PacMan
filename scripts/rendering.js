@@ -85,7 +85,7 @@ const GameRenderer = (() => {
     try { environment.draw(ctx, frame); } catch { useFallback(); fallback.draw(ctx, frame); }
     drawCollectibles(ctx, frame, state.maze);
     const options = { tile: TILE, colors: GHOST_COLORS, dirs: DIRS,
-      powerTimer: state.powerTimer, animFrame: reducedMotion ? 0 : state.animFrame };
+      powerTimer: state.powerTimer, animFrame: reducedMotion ? 0 : state.animFrame, time, reducedMotion };
     actors.player(ctx, state.player, options);
     actors.ghosts(ctx, state.ghosts, options);
     fallback.drawAtmosphere(ctx, frame);

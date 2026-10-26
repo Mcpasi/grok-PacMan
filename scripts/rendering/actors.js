@@ -15,36 +15,7 @@ const ClassicActors = {
     ctx.fill();
     ctx.restore();
   },
-  ghosts(ctx, ghosts, { tile, colors, dirs, powerTimer, animFrame }) {
-    ghosts.forEach(g => {
-      if (g.mode === 'house' && g.houseTimer > 30) return;
-      const x = g.x, y = g.y;
-      let color = colors[g.color];
-      if (g.mode === 'eyes') color = '#fff';
-      else if (g.scared) color = (powerTimer < 120 && Math.floor(animFrame / 8) % 2) ? '#fff' : '#2121de';
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(x, y - 2, tile * 0.4, Math.PI, 0);
-      ctx.lineTo(x + tile * 0.4, y + tile * 0.3);
-      for (let i = 0; i < 3; i++) {
-        ctx.quadraticCurveTo(x + tile * 0.4 - i * tile * 0.25, y + tile * 0.5,
-          x + tile * 0.4 - (i + 0.5) * tile * 0.25, y + tile * 0.3);
-      }
-      ctx.lineTo(x - tile * 0.4, y - 2);
-      ctx.fill();
-      if (g.mode !== 'eyes') {
-        const eyeOff = dirs[g.dir][0] * 2;
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(x - 4, y - 4, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(x + 4, y - 4, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#0000ff';
-        ctx.beginPath(); ctx.arc(x - 4 + eyeOff, y - 4, 2, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(x + 4 + eyeOff, y - 4, 2, 0, Math.PI * 2); ctx.fill();
-      } else {
-        ctx.fillStyle = '#00f';
-        ctx.beginPath(); ctx.arc(x - 4, y - 2, 3, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(x + 4, y - 2, 3, 0, Math.PI * 2); ctx.fill();
-      }
-    });
+  ghosts(ctx, ghosts, options) {
+    GhostArtwork.draw(ctx, ghosts, options);
   }
 };

@@ -63,7 +63,7 @@ async function waitFor(check, message, timeout = 20000) {
   throw new Error(message);
 }
 
-test('browser smoke: city, movement, pause, mobile layout and offline fallback', {
+test('browser smoke: city, ghost artwork and search, movement, pause, mobile layout and offline fallback', {
   skip: !executable && 'Set PACMAN_BROWSER to a Chromium executable.', timeout: 90000
 }, async t => {
   let browser, client, profile;
@@ -135,6 +135,58 @@ test('browser smoke: city, movement, pause, mobile layout and offline fallback',
   const position = await client.evaluate('player.x');
   await client.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
   assert.equal(await client.evaluate('player.x'), position);
+
+  const ghostSearch = await client.evaluate(`(() => {
+    resetLevel(false);
+    const visited = ghosts.map(() => new Set());
+    let spread = 0;
+    for (let frame = 0; frame < 1800; frame++) {
+      if (frame % 450 === 0) {
+        const [col, row] = [[13, 22], [1, 1], [26, 4], [6, 18]][frame / 450];
+        Object.assign(player, { x: (col + 0.5) * TILE, y: (row + 0.5) * TILE, dir: frame / 450 });
+      }
+      updateGhosts();
+      ghosts.forEach((ghost, index) => {
+        const col = Math.floor((ghost.x + COLS * TILE) % (COLS * TILE) / TILE), row = Math.floor(ghost.y / TILE);
+        if (!maze[row]?.[col]) throw new Error(ghost.id + ' entered a wall');
+        if (ghost.mode === 'chase') visited[index].add(col + ',' + row);
+      });
+      if (ghosts.every(ghost => ghost.mode === 'chase')) spread = Math.max(spread, new Set(ghosts.map(ghost => ghost.dir)).size);
+    }
+    return { ids: ghosts.map(ghost => ghost.id), visited: visited.map(cells => cells.size), spread };
+  })()`);
+  assert.deepEqual(ghostSearch.ids, ['blinky', 'pinky', 'inky', 'clyde']);
+  assert.ok(ghostSearch.visited.every(count => count > 20), JSON.stringify(ghostSearch));
+  assert.ok(ghostSearch.spread >= 3);
+
+  const artwork = await client.evaluate(`(() => {
+    const surface = document.createElement('canvas'); surface.width = surface.height = 96;
+    const ctx = surface.getContext('2d'), signatures = [];
+    const preview = document.createElement('canvas'); preview.width = 384; preview.height = 288;
+    const previewContext = preview.getContext('2d');
+    previewContext.fillStyle = '#0d1a23'; previewContext.fillRect(0, 0, preview.width, preview.height);
+    for (const profile of GhostProfiles.all) {
+      for (const mode of ['chase', 'frightened', 'eyes']) {
+        ctx.clearRect(0, 0, 96, 96);
+        const ghost = { id: profile.id, color: profile.index, x: 48, y: 48, dir: profile.index,
+          mode: mode === 'frightened' ? 'chase' : mode, scared: mode === 'frightened' };
+        GhostArtwork.draw(ctx, [ghost], { tile: 64, dirs: DIRS, powerTimer: 200, time: 0, reducedMotion: true });
+        const pixels = ctx.getImageData(0, 0, 96, 96).data;
+        if (!pixels.some(value => value > 0)) throw new Error('Invisible ' + profile.id + ': ' + mode);
+        signatures.push(surface.toDataURL());
+        previewContext.drawImage(surface, profile.index * 96, ['chase', 'frightened', 'eyes'].indexOf(mode) * 96);
+      }
+    }
+    return { unique: new Set(signatures).size, count: signatures.length,
+      preview: ${process.env.PACMAN_GHOST_SCREENSHOT ? 'preview.toDataURL()' : 'null'} };
+  })()`);
+  assert.equal(artwork.count, 12);
+  assert.equal(artwork.unique, 12, 'all four skins and all three states must render distinctly');
+  if (process.env.PACMAN_GHOST_SCREENSHOT) {
+    await fs.writeFile(process.env.PACMAN_GHOST_SCREENSHOT, Buffer.from(artwork.preview.split(',')[1], 'base64'));
+  }
+  t.diagnostic('Four independent searches and all ghost artwork states verified.');
+  await client.evaluate('resetLevel(false);');
 
   if (testThree) {
     await client.evaluate('resetLevel(false); resetLevel(false);');

@@ -29,12 +29,8 @@ function resetLevel(isNewGame = false) {
     dir: 0, nextDir: 0, // 0=right,1=down,2=left,3=up
     speed: 1.6, mouth: 0, mouthDir: 1, alive: true
   };
-  ghosts = [
-    { x: 13.5*TILE, y: 11*TILE, dir: 0, color: 0, mode: 'house', houseTimer: 0, target: {x:0,y:0}, scared: false },
-    { x: 13.5*TILE, y: 14*TILE, dir: 0, color: 1, mode: 'house', houseTimer: 60, target: {x:0,y:0}, scared: false },
-    { x: 11.5*TILE, y: 14*TILE, dir: 2, color: 2, mode: 'house', houseTimer: 120, target: {x:0,y:0}, scared: false },
-    { x: 15.5*TILE, y: 14*TILE, dir: 0, color: 3, mode: 'house', houseTimer: 180, target: {x:0,y:0}, scared: false }
-  ];
+  ghostController = GhostController.create(maze, TILE);
+  ghosts = GhostProfiles.create(TILE);
   powerMode = false;
   powerTimer = 0;
   ghostEatCombo = 0;
