@@ -25,17 +25,17 @@ const GameRenderer = (() => {
     reducedMotion = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     fallback = CanvasCity.create({ createCanvas: () => document.createElement('canvas') });
     setEnvironment(fallback);
-    // No CDN request is required to start playing. Failed imports stay on Canvas.
+    // Both modules are bundled locally, so GPU rendering also works offline.
     if (!window.WebGLRenderingContext && !window.WebGL2RenderingContext) return;
     const request = generation;
     Promise.all([
       import('./rendering/city-three.mjs'),
-      import('https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js')
+      import('./vendor/three.module.min.mjs')
     ]).then(([{ createCityScene }, three]) => {
       if (generation !== request) return;
       const scene = createCityScene({ three, canvas, paintGround: CanvasCity.paintGround, onFailure: useFallback });
       try { setEnvironment(scene); } catch (error) { scene.dispose(); throw error; }
-    }).catch(() => { /* Offline, CSP, and unsupported GPUs use the complete Canvas city. */ });
+    }).catch(() => { /* Missing modules and unsupported GPUs use the complete Canvas city. */ });
   }
 
   function setMaze(maze) {

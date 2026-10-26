@@ -9,7 +9,7 @@ const test = require('node:test');
 
 // Opt-in, dependency-free Chromium smoke test:
 // PACMAN_BROWSER=chromium PACMAN_TEST_THREE=1 node --test tests/browser.test.js
-// Omit PACMAN_TEST_THREE for a fully offline Canvas-only run.
+// Both modes forbid external resources. Omit PACMAN_TEST_THREE to test the Canvas fallback.
 const executable = process.env.PACMAN_BROWSER;
 const root = path.join(__dirname, '..');
 
@@ -17,10 +17,11 @@ async function connect(url) {
   const socket = new WebSocket(url);
   await once(socket, 'open', { signal: AbortSignal.timeout(15000) });
   let sequence = 0;
-  const pending = new Map(), errors = [];
+  const pending = new Map(), errors = [], requests = [];
   socket.addEventListener('message', event => {
     const message = JSON.parse(event.data);
     if (message.method === 'Runtime.exceptionThrown') errors.push(message.params.exceptionDetails);
+    if (message.method === 'Network.requestWillBeSent') requests.push(message.params.request.url);
     if (!message.id) return;
     const request = pending.get(message.id);
     if (!request) return;
@@ -45,7 +46,7 @@ async function connect(url) {
     });
   }
   return {
-    send, errors, close: () => socket.close(),
+    send, errors, requests, close: () => socket.close(),
     async evaluate(expression) {
       const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
       assert.equal(result.exceptionDetails, undefined, JSON.stringify(result.exceptionDetails));
@@ -75,7 +76,10 @@ test('browser smoke: city, ghost artwork and search, movement, pause, mobile lay
       if (!file.startsWith(root + path.sep)) { response.writeHead(403).end(); return; }
       const content = await fs.readFile(file);
       const type = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css' }[path.extname(file)];
-      response.writeHead(200, { 'Content-Type': type || 'application/octet-stream' }).end(content);
+      response.writeHead(200, {
+        'Content-Type': type || 'application/octet-stream',
+        'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'"
+      }).end(content);
     } catch { response.writeHead(404).end(); }
   });
   t.after(async () => {
@@ -116,16 +120,20 @@ test('browser smoke: city, ghost artwork and search, movement, pause, mobile lay
   await client.send('Runtime.enable');
   await client.send('Page.enable');
   await client.send('Network.enable');
-  if (!testThree) await client.send('Network.setBlockedURLs', { urls: ['*cdn.jsdelivr.net*'] });
+  await client.send('Network.setCacheDisabled', { cacheDisabled: true });
+  await client.send('Network.setBlockedURLs', { urls: ['*cdn.jsdelivr.net*', '*unpkg.com*'] });
   await client.send('Emulation.setDeviceMetricsOverride', { width: 960, height: 900, deviceScaleFactor: 1, mobile: false });
-  await client.send('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  await client.send('Page.navigate', { url: `${origin}/` });
   await waitFor(() => client.evaluate("!!document.getElementById('gameCanvas')?.dataset.renderer"), 'Game did not initialize.');
   t.diagnostic('Game initialized.');
+  assert.equal(await client.evaluate("import('./scripts/vendor/three.module.min.mjs').then(three => three.REVISION)"), '160',
+    'the browser must load the bundled Three.js without external resources');
   if (testThree) {
     await waitFor(() => client.evaluate("document.getElementById('gameCanvas').dataset.renderer === 'three'"),
-      'Three.js did not initialize (this opt-in check needs CDN access and WebGL).', 40000);
+      'Local Three.js did not initialize (this opt-in check needs WebGL, not internet access).', 40000);
     assert.equal(await client.evaluate("document.querySelectorAll('.city-scene').length"), 1);
-    t.diagnostic('Three.js city rendered.');
+    t.diagnostic('Local Three.js city rendered with external resources blocked.');
   }
   await client.evaluate("document.getElementById('startBtn').click()");
   await waitFor(() => client.evaluate('score > 0 && player.x > 13.5 * TILE'), 'Pac-Man did not move and collect dots.');
@@ -214,10 +222,21 @@ test('browser smoke: city, ghost artwork and search, movement, pause, mobile lay
     const screenshot = await client.send('Page.captureScreenshot', { format: 'png' });
     await fs.writeFile(process.env.PACMAN_SCREENSHOT, Buffer.from(screenshot.data, 'base64'));
   }
-  await client.send('Network.setBlockedURLs', { urls: ['*cdn.jsdelivr.net*'] });
   await client.send('Page.reload', { ignoreCache: true });
-  await waitFor(() => client.evaluate("!!document.getElementById('startBtn') && document.getElementById('gameCanvas').dataset.renderer === 'canvas'"), 'Offline city did not initialize.');
+  const offlineRenderer = testThree ? 'three' : 'canvas';
+  await waitFor(() => client.evaluate(`!!document.getElementById('startBtn') && document.getElementById('gameCanvas').dataset.renderer === '${offlineRenderer}'`),
+    `Offline ${offlineRenderer} city did not initialize.`, 40000);
   await client.evaluate("document.getElementById('startBtn').click()");
   await waitFor(() => client.evaluate('score > 0'), 'Offline city is not playable.');
+  if (testThree) {
+    await client.send('Network.setBlockedURLs', { urls: ['*/scripts/vendor/three.module.min.mjs'] });
+    await client.send('Page.reload', { ignoreCache: true });
+    await waitFor(() => client.evaluate("!!document.getElementById('startBtn') && document.getElementById('gameCanvas').dataset.renderer === 'canvas'"),
+      'Missing local Three.js did not activate Canvas.');
+    await client.evaluate("document.getElementById('startBtn').click()");
+    await waitFor(() => client.evaluate('score > 0'), 'Canvas fallback is not playable without Three.js.');
+  }
+  assert.deepEqual(client.requests.filter(url => /^https?:/.test(url) && new URL(url).origin !== origin), [],
+    'the game must never request external resources');
   assert.deepEqual(client.errors, [], 'no uncaught browser errors');
 });

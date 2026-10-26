@@ -3,6 +3,14 @@ const test = require('node:test');
 const CityLayout = require('../scripts/rendering/city-layout');
 const { createThreeStub } = require('./helpers/three-stub');
 
+test('vendored Three.js loads locally with the GPU scene API', async () => {
+  const three = await import('../scripts/vendor/three.module.min.mjs');
+  assert.equal(three.REVISION, '160');
+  for (const name of ['WebGLRenderer', 'Scene', 'OrthographicCamera', 'InstancedMesh', 'CanvasTexture', 'MeshStandardMaterial']) {
+    assert.equal(typeof three[name], 'function', `${name} must be bundled locally`);
+  }
+});
+
 async function createScene() {
   const { createCityScene } = await import('../scripts/rendering/city-three.mjs');
   const stub = createThreeStub();
