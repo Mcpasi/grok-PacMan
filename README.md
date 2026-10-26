@@ -27,6 +27,8 @@ This is the Grok counterpart to [Muse-PacMan](https://github.com/marlandoj/Muse-
 
 All four ghosts have also received a new design and new colors from me.
 
+**Offline-capable:** Devices that are not connected to the internet no longer fall back to Canvas—provided that the device is WebGL-capable.
+
 **Test coverage**
 
 Without a browser, browser test is skipped    
